@@ -1,7 +1,7 @@
-from django.forms import ModelForm, forms
+from django import forms
+from django.forms import ModelForm
 from .models import Room, Message, User, Topic
 from django.contrib.auth.forms import UserCreationForm
-from django import forms
 
 
 class MyUserCreationForm(UserCreationForm):
