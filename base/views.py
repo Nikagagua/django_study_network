@@ -1,5 +1,5 @@
-from django.shortcuts import render, redirect
-from django.http import HttpResponse
+from django.shortcuts import render, redirect, get_object_or_404
+from django.http import HttpResponse, HttpResponseForbidden
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Count
 from django.contrib.auth import authenticate, login, logout
@@ -24,12 +24,11 @@ def login_page(request):
         email = request.POST.get("email").lower()
         password = request.POST.get("password")
 
-        user_email = None
         try:
             user_email = User.objects.get(email=email)
         except ObjectDoesNotExist:
-            messages.error(request, f"{user_email} does not exist")
-            return exit(1)
+            messages.error(request, "Email or password is incorrect")
+            return render(request, "base/login.html", {"page": page, "form": login_form})
 
         user = authenticate(request, email=email, password=password)
 
@@ -37,7 +36,7 @@ def login_page(request):
             login(request, user)
             return redirect(HOME_PAGE)
         else:
-            messages.error(request, "Email or Password does not exit")
+            messages.error(request, "Email or password is incorrect")
 
     context = {"page": page, "form": login_form}
     return render(request, "base/login.html", context)
@@ -98,21 +97,21 @@ def home(request):
 
     rooms = Room.objects.filter(
         Q(topic__name__icontains=q) | Q(name__icontains=q) | Q(description__icontains=q)
-    )[:3]
+    ).select_related('host', 'topic')[:3]
     show_all_room = Room.objects.filter(
         Q(topic__name__icontains=q) | Q(name__icontains=q) | Q(description__icontains=q)
-    )[3:]
+    ).select_related('host', 'topic')[3:]
 
     top_topics = topics[0:5]
     other_topics = topics[5:]
     room_by_topic = {
-        topic.id: Room.objects.filter(topic=topic)[0:3] for topic in top_topics
+        topic.id: Room.objects.filter(topic=topic).select_related('host', 'topic')[0:3] for topic in top_topics
     }
     all_room_by_topic = {
-        topic.id: Room.objects.filter(topic=topic)[3:0] for topic in top_topics
+        topic.id: Room.objects.filter(topic=topic).select_related('host', 'topic')[3:] for topic in top_topics
     }
     all_room_count = Room.objects.all().count()
-    room_messages = Message.objects.filter(Q(room__topic__name__icontains=q))[0:3]
+    room_messages = Message.objects.filter(Q(room__topic__name__icontains=q)).select_related('user', 'room')[0:3]
 
     user = request.user if request.user.is_authenticated else None
 
@@ -134,7 +133,7 @@ def home(request):
 @login_required(login_url="login")
 def room(request, pk):
     form = MessageForm()
-    room_info = Room.objects.get(id=pk)
+    room_info = get_object_or_404(Room, id=pk)
     room_host = room_info.host.id if room_info.host else None
     room_messages = room_info.message_set.all()
     participants = room_info.participants.all()
@@ -158,10 +157,10 @@ def room(request, pk):
 
 @login_required(login_url="login")
 def user_profile(request, pk):
-    user = User.objects.get(id=pk)
-    rooms = Room.objects.filter()[0:2]
-    show_all_room = Room.objects.filter()[3:]
-    room_messages = Message.objects.filter()[0:4]
+    user = get_object_or_404(User, id=pk)
+    rooms = Room.objects.filter(host=user).select_related('host', 'topic')[0:2]
+    show_all_room = Room.objects.filter(host=user).select_related('host', 'topic')[3:]
+    room_messages = Message.objects.filter(user=user).select_related('user', 'room')[0:4]
     topics = Topic.objects.annotate(room_count=Count("room")).order_by("-room_count")
     top_topics = topics[0:5]
     other_topics = topics[5:]
@@ -201,12 +200,12 @@ def create_room(request):
 
 @login_required(login_url="login")
 def update_room(request, pk):
-    room_info = Room.objects.get(id=pk)
+    room_info = get_object_or_404(Room, id=pk)
     form = RoomForm(instance=room_info)
     topics = Topic.objects.all()
 
     if request.user != room_info.host:
-        return HttpResponse("You are not allowed here!!")
+        return HttpResponseForbidden("You are not allowed to edit this room.")
 
     if request.method == "POST":
         form = RoomForm(request.POST, instance=room_info)
@@ -224,10 +223,10 @@ def update_room(request, pk):
 
 @login_required(login_url="login")
 def delete_room(request, pk):
-    room_info = Room.objects.get(id=pk)
+    room_info = get_object_or_404(Room, id=pk)
 
     if request.user != room_info.host:
-        return HttpResponse("Your are not allowed here!!")
+        return HttpResponseForbidden("You are not allowed to delete this room.")
 
     if request.method == "POST":
         room_info.delete()
@@ -237,10 +236,10 @@ def delete_room(request, pk):
 
 @login_required(login_url="login")
 def delete_message(request, pk):
-    message_info = Message.objects.get(id=pk)
+    message_info = get_object_or_404(Message, id=pk)
 
     if request.user != message_info.user:
-        return HttpResponse("Your are not allowed here!!")
+        return HttpResponseForbidden("You are not allowed to delete this message.")
 
     if request.method == "POST":
         message_info.delete()

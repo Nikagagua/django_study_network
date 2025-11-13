@@ -29,20 +29,22 @@ class CustomUserManager(BaseUserManager):
 class User(AbstractUser):
     username = models.CharField(max_length=150, unique=True)
     name = models.CharField(max_length=200, null=True)
-    email = models.EmailField(unique=True, null=True)
+    email = models.EmailField(unique=True, null=True, db_index=True)
     bio = models.TextField(null=True)
 
-    avatar = models.ImageField(null=True, default="avatar.svg")
+    avatar = models.ImageField(null=True, default="avatar.svg", upload_to="avatars/")
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]
+
+    objects = CustomUserManager()
 
     def __str__(self):
         return self.username
 
 
 class Topic(models.Model):
-    name = models.CharField(max_length=200)
+    name = models.CharField(max_length=200, db_index=True)
 
     class Meta:
         ordering = ["-name"]
@@ -54,14 +56,17 @@ class Topic(models.Model):
 class Room(models.Model):
     host = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     topic = models.ForeignKey(Topic, on_delete=models.SET_NULL, null=True)
-    name = models.CharField(max_length=200)
+    name = models.CharField(max_length=200, db_index=True)
     description = models.TextField(null=True, blank=True)
     participants = models.ManyToManyField(User, related_name="participants", blank=True)
-    updated = models.DateTimeField(auto_now=True)
-    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True, db_index=True)
+    created = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ["-updated", "-created"]
+        indexes = [
+            models.Index(fields=["-updated", "-created"]),
+        ]
 
     def __str__(self):
         return self.name
@@ -71,11 +76,14 @@ class Message(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
     body = models.TextField()
-    updated = models.DateTimeField(auto_now=True)
-    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True, db_index=True)
+    created = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ["-updated", "-created"]
+        indexes = [
+            models.Index(fields=["-updated", "-created"]),
+        ]
 
     def __str__(self):
         return self.body[0:50]
